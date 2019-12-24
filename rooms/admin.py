@@ -1,104 +1,110 @@
-from django.db import models
-from django_countries.fields import CountryField
-from core import models as core_models
+from django.contrib import admin
+from django.utils.html import mark_safe
+from . import models
 
 
-class AbstractItem(core_models.TimeStampedModel):
+@admin.register(models.RoomType, models.Facility, models.Amenity, models.HouseRule)
+class ItemAdmin(admin.ModelAdmin):
 
-    """ Abstract Item """
+    """ Item Admin Definition """
 
-    name = models.CharField(max_length=80)
+    list_display = ("name", "used_by")
 
-    class Meta:
-        abstract = True
-
-    def __str__(self):
-        return self.name
-
-
-class RoomType(AbstractItem):
-
-    """ RoomType Model Definition """
-
-    class Meta:
-        verbose_name = "Room Type"
-
-
-class Amenity(AbstractItem):
-
-    """ Amenity Model Definition """
-
-    class Meta:
-        verbose_name_plural = "Amenities"
-
-
-class Facility(AbstractItem):
-
-    """ Facility Model Definition """
+    def used_by(self, obj):
+        return obj.rooms.count()
 
     pass
 
-    class Meta:
-        verbose_name_plural = "Facilities"
+
+class PhotoInline(admin.TabularInline):
+
+    model = models.Photo
 
 
-class HouseRule(AbstractItem):
+@admin.register(models.Room)
+class RoomAdmin(admin.ModelAdmin):
 
-    """ HouseRule Model Definition """
+    """ Room Admin Definition """
 
-    class Meta:
-        verbose_name = "House Rule"
+    inlines = (PhotoInline,)
 
-
-class Photo(core_models.TimeStampedModel):
-
-    """ Photo Model Definition """
-
-    caption = models.CharField(max_length=80)
-    file = models.ImageField(upload_to="room_photos")
-    room = models.ForeignKey("Room", related_name="photos", on_delete=models.CASCADE)
-
-    def __str__(self):
-        return self.caption
-
-
-class Room(core_models.TimeStampedModel):
-
-    """ Room Model Definition """
-
-    name = models.CharField(max_length=140)
-    description = models.TextField()
-    country = CountryField()
-    city = models.CharField(max_length=80)
-    price = models.IntegerField()
-    address = models.CharField(max_length=140)
-    guests = models.IntegerField()
-    beds = models.IntegerField()
-    bedrooms = models.IntegerField()
-    baths = models.IntegerField()
-    check_in = models.TimeField()
-    check_out = models.TimeField()
-    instant_book = models.BooleanField(default=False)
-    host = models.ForeignKey(
-        "users.User", related_name="rooms", on_delete=models.CASCADE
+    fieldsets = (
+        (
+            "Basic Info",
+            {
+                "fields": (
+                    "name",
+                    "description",
+                    "country",
+                    "city",
+                    "address",
+                    "price",
+                    "room_type",
+                )
+            },
+        ),
+        ("Times", {"fields": ("check_in", "check_out", "instant_book")}),
+        ("Spaces", {"fields": ("guests", "beds", "bedrooms", "baths")}),
+        (
+            "More About the Space",
+            {"fields": ("amenities", "facilities", "house_rules")},
+        ),
+        ("Last Details", {"fields": ("host",)}),
     )
-    room_type = models.ForeignKey(
-        "RoomType", related_name="rooms", on_delete=models.SET_NULL, null=True
+
+    list_display = (
+        "name",
+        "country",
+        "city",
+        "price",
+        "guests",
+        "beds",
+        "bedrooms",
+        "baths",
+        "check_in",
+        "check_out",
+        "instant_book",
+        "count_amenities",
+        "count_photos",
+        "total_rating",
     )
-    amenities = models.ManyToManyField("Amenity", related_name="rooms", blank=True)
-    facilities = models.ManyToManyField("Facility", related_name="rooms", blank=True)
-    house_rules = models.ManyToManyField("HouseRule", related_name="rooms", blank=True)
 
-    def __str__(self):
-        return self.name
+    list_filter = (
+        "instant_book",
+        "host__superhost",
+        "room_type",
+        "amenities",
+        "facilities",
+        "house_rules",
+        "city",
+        "country",
+    )
 
-    def save(self, *args, **kwargs):
-        self.city = str.capitalize(self.city)
-        super().save(*args, **kwargs)
+    raw_id_fields = ("host",)
 
-    def total_rating(self):
-        all_reviews = self.reviews.all()
-        all_ratings = 0
-        for review in all_reviews:
-            all_ratings += review.rating_average()
-        return all_ratings / len(all_reviews)
+    search_fields = ("=city", "^host__username")
+
+    filter_horizontal = ("amenities", "facilities", "house_rules")
+
+    def count_amenities(self, obj):
+        return obj.amenities.count()
+
+    count_amenities.short_description = "Amenity Count"
+
+    def count_photos(self, obj):
+        return obj.photos.count()
+
+    count_photos.short_description = "Photo Count"
+
+
+@admin.register(models.Photo)
+class PhotoAdmin(admin.ModelAdmin):
+
+    """ Phot Admin Definition """
+
+    list_display = ("__str__", "get_thumbnail")
+
+    def get_thumbnail(self, obj):
+        return mark_safe(f'<img width="50px" src="{obj.file.url}" />')
+
+    get_thumbnail.short_description = "Thumbnail"
